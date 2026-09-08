@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tax Loss Harvest Review</title>
+<style>
+:root{
+  --navy:#1B2B4B; --sky:#4CB8E8; --green:#6ABB4B; --white:#fff; --fog:#F4F6FA;
+  --muted:#8A96AA; --text:#2C3A52; --sell:#c0392b; --buy:#27963a; --line:#DDE1EA;
+  --warn:#B7791F; --warnbg:#FFF7E6; --mark:#E9F5FC;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--white);color:var(--text);font:14px/1.45 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+button,input,select,textarea{font:inherit;color:inherit}
+h1,h2,h3{margin:0;color:var(--navy);font-weight:600}
+h1{font-size:20px}
+h2{font-size:15px;padding-bottom:6px;border-bottom:2px solid var(--navy);margin-bottom:10px}
+.num{text-align:right;font-variant-numeric:tabular-nums}
+.neg{color:var(--sell)} .pos{color:var(--buy)} .mut{color:var(--muted)}
+.small{font-size:12px}
+a{color:var(--navy)}
+
+header{display:flex;align-items:center;gap:20px;padding:12px 22px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--white);z-index:5}
+header .spacer{flex:1}
+header .meta{font-size:12px;color:var(--muted)}
+nav.tabs{display:flex;gap:2px}
+nav.tabs button{background:none;border:0;border-bottom:3px solid transparent;padding:10px 14px;cursor:pointer;color:var(--muted);font-weight:500}
+nav.tabs button.on{color:var(--navy);border-bottom-color:var(--navy)}
+nav.tabs button .pill{display:inline-block;min-width:18px;padding:0 6px;margin-left:6px;border-radius:9px;background:var(--fog);color:var(--navy);font-size:11px;line-height:18px;text-align:center}
+nav.tabs button.on .pill{background:var(--navy);color:#fff}
+
+main{padding:16px 22px 60px}
+section.view{display:none} section.view.on{display:block}
+
+/* ledger strip */
+.ledger{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);margin-bottom:16px}
+.ledger div{background:var(--white);padding:10px 14px}
+.ledger .lab{font-size:11px;color:var(--muted);margin-bottom:2px}
+.ledger .val{font-size:18px;font-weight:600;color:var(--navy);font-variant-numeric:tabular-nums}
+.ledger .marked .val{color:var(--sell)}
+.ledger .marked{background:var(--mark)}
+
+/* load */
+.drop{border:2px dashed var(--line);padding:38px;text-align:center;background:var(--fog);cursor:pointer;margin-bottom:16px}
+.drop.over{border-color:var(--sky);background:#EAF6FC}
+.drop p{margin:6px 0}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+@media (max-width:900px){.cols{grid-template-columns:1fr}}
+textarea.equiv{width:100%;min-height:210px;border:1px solid var(--line);padding:8px;resize:vertical;font-family:ui-monospace,Menlo,monospace;font-size:12px;line-height:1.5}
+
+/* controls */
+.bar{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:flex-end;margin-bottom:12px}
+.bar label{display:flex;flex-direction:column;font-size:11px;color:var(--muted);gap:3px}
+.bar input[type=text],.bar input[type=number],.bar select{border:1px solid var(--line);padding:5px 7px;min-width:110px;background:#fff}
+.bar input[type=number]{width:110px}
+.bar .chk{flex-direction:row;align-items:center;gap:6px;color:var(--text);padding-bottom:6px}
+.bar .grow{flex:1}
+
+/* buttons */
+.btn{border:1px solid var(--navy);background:var(--navy);color:#fff;padding:6px 12px;cursor:pointer;border-radius:3px}
+.btn.sec{background:#fff;color:var(--navy)}
+.btn.ghost{background:none;border-color:var(--line);color:var(--text)}
+.btn:disabled{opacity:.45;cursor:default}
+.btn.sm{padding:3px 8px;font-size:12px}
+
+/* tables */
+table{border-collapse:collapse;width:100%}
+th,td{padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:middle;white-space:nowrap}
+th{position:sticky;top:53px;background:var(--fog);color:var(--navy);font-weight:600;text-align:left;font-size:12px;cursor:pointer;user-select:none;z-index:2}
+th.num{text-align:right}
+th .arr{color:var(--sky);font-size:10px;margin-left:3px}
+td.name{white-space:normal;max-width:260px;font-size:12.5px}
+tr.marked td{background:var(--mark)}
+tr.done td{background:#F0F8EC;color:var(--muted)}
+tr.done td .sym{text-decoration:line-through}
+tr.grp td{background:var(--navy);color:#fff;font-weight:600;padding:8px}
+tr.sub td{background:var(--fog);font-weight:600;color:var(--navy)}
+td input[type=number]{width:96px;border:1px solid var(--line);padding:3px 5px;text-align:right}
+td input[type=text]{border:1px solid var(--line);padding:3px 5px}
+td select{border:1px solid var(--line);padding:3px 4px;background:#fff;max-width:120px}
+td input[type=checkbox]{width:16px;height:16px;cursor:pointer}
+.sym{font-weight:600;color:var(--navy)}
+.flag{display:inline-block;background:var(--warnbg);color:var(--warn);border:1px solid #F1D9A5;border-radius:3px;padding:0 5px;font-size:11px;margin:1px 2px 1px 0;white-space:normal}
+.flag.bad{background:#FBEAE8;color:var(--sell);border-color:#F0C4BF}
+.empty{padding:40px;text-align:center;color:var(--muted);background:var(--fog)}
+.cust{margin-bottom:26px}
+.cust .head{display:flex;align-items:center;gap:12px;margin-bottom:6px}
+.cust .head h2{flex:1;margin:0;border:0;padding:0}
+.acct{margin:10px 0 4px;font-weight:600;color:var(--navy);display:flex;gap:10px;align-items:baseline}
+.acct .mut{font-weight:400}
+.note{font-size:12px;color:var(--muted);margin:8px 0 14px;max-width:80ch}
+.toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--navy);color:#fff;padding:8px 16px;border-radius:4px;opacity:0;transition:opacity .2s;pointer-events:none}
+.toast.show{opacity:1}
+
+/* print summary */
+#print{display:none}
+@media print{
+  body{font-size:11px}
+  header,main{display:none!important}
+  #print{display:block;padding:0 6mm}
+  #print h1{font-size:18px;margin-bottom:2px}
+  #print .sub{color:var(--muted);margin-bottom:14px}
+  #print table{margin-bottom:14px}
+  #print th{position:static;background:var(--fog)}
+  #print td,#print th{padding:4px 6px;font-size:10.5px}
+  #print h2{margin-top:14px}
+  #print .tot{font-weight:600}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Tax Loss Harvest Review</h1>
+  <nav class="tabs">
+    <button data-tab="load" class="on">Load</button>
+    <button data-tab="review">Review <span class="pill" id="pillReview">0</span></button>
+    <button data-tab="trades">Trade list <span class="pill" id="pillTrades">0</span></button>
+    <button data-tab="export">Export</button>
+  </nav>
+  <div class="spacer"></div>
+  <div class="meta" id="fileMeta">No file loaded</div>
+</header>
+
+<main>
+
+<!-- ================= LOAD ================= -->
+<section class="view on" id="view-load">
+  <div class="drop" id="drop">
+    <p><strong>Drop a Black Diamond position export here</strong> or click to choose</p>
+    <p class="mut small">.xlsx or .csv. Columns are matched by header name, so column order does not matter.</p>
+    <input type="file" id="file" accept=".xlsx,.csv" style="display:none">
+  </div>
+  <div class="cols">
+    <div>
+      <h2>Replacement equivalents</h2>
+      <p class="note">One family per line, comma separated, in preference order. When a fund in a family is marked for sale, the next fund in the line is suggested as the buy. Edit freely; saved in this browser.</p>
+      <textarea class="equiv" id="equiv"></textarea>
+      <div style="margin-top:8px;display:flex;gap:8px">
+        <button class="btn sm" id="saveEquiv">Save equivalents</button>
+        <button class="btn sm ghost" id="resetEquiv">Restore default list</button>
+      </div>
+    </div>
+    <div>
+      <h2>Saved work</h2>
+      <p class="note" id="savedInfo">Marks, sell quantities, replacements, notes and done checkmarks are saved in this browser keyed to the file name, so you can close the page and come back. Reloading a newer export with the same file name keeps your marks for positions that still exist.</p>
+      <button class="btn sm ghost" id="clearWork">Clear saved marks for this file</button>
+      <h2 style="margin-top:24px">How it reads the file</h2>
+      <p class="note">Position level only. Short and long term split comes from the export; partial sales pro-rate cost, proceeds and ST/LT loss by units. There are no purchase dates in the export, so wash sale flags are limited to what can be seen across accounts in the same household and across the marks you make here. Check recent buys and dividend reinvestment at the custodian before trading.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ================= REVIEW ================= -->
+<section class="view" id="view-review">
+  <div class="ledger" id="ledger"></div>
+  <div class="bar">
+    <label>Search<input type="text" id="q" placeholder="symbol, name, account"></label>
+    <label>Household<select id="fHouse"><option value="">All</option></select></label>
+    <label>Custodian<select id="fCust"><option value="">All</option></select></label>
+    <label>Class<select id="fClass"><option value="">All</option></select></label>
+    <label>Min loss $<input type="number" id="fMinLoss" value="500" step="100"></label>
+    <label>Min loss %<input type="number" id="fMinPct" value="0" step="0.5"></label>
+    <label class="chk"><input type="checkbox" id="fGains"> Show gains too</label>
+    <label class="chk"><input type="checkbox" id="fTaxable" checked> Taxable only</label>
+    <label class="chk"><input type="checkbox" id="fPriv" checked> Hide private / unclassified</label>
+    <label class="chk"><input type="checkbox" id="fMarkedOnly"> Marked only</label>
+  </div>
+  <div id="reviewTable"></div>
+</section>
+
+<!-- ================= TRADES ================= -->
+<section class="view" id="view-trades">
+  <div class="ledger" id="ledger2"></div>
+  <div class="bar">
+    <label class="chk"><input type="checkbox" id="hideDone"> Hide completed</label>
+    <div class="grow"></div>
+    <button class="btn sec sm" id="copyAll">Copy full list</button>
+    <button class="btn sec sm" id="csvAll">Download full list (CSV)</button>
+  </div>
+  <p class="note">Check each trade off as it is entered at the custodian. Buy amount defaults to estimated proceeds of the sell; edit the buy symbol per line if the suggested equivalent is not the one you want.</p>
+  <div id="tradeList"></div>
+</section>
+
+<!-- ================= EXPORT ================= -->
+<section class="view" id="view-export">
+  <h2>Harvest summary</h2>
+  <p class="note">A record of what was harvested from this export. Choose whether to include only trades checked off as done, or everything marked.</p>
+  <div class="bar">
+    <label>Include<select id="expScope"><option value="done">Completed trades only</option><option value="all">All marked trades</option></select></label>
+    <label>Trade date<input type="text" id="expDate"></label>
+    <label>Prepared by<input type="text" id="expBy" value="Mike Lambrakis, CFP"></label>
+    <div class="grow"></div>
+    <button class="btn sec sm" id="expCsv">Download summary (CSV)</button>
+    <button class="btn sm" id="expPrint">Print / save as PDF</button>
+  </div>
+  <div id="expPreview"></div>
+</section>
+
+</main>
+
+<div id="print"></div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ============================================================
+   Minimal XLSX reader (zip + inflate + sheet XML). No libraries.
+   ============================================================ */
+async function readXlsx(buf){
+  const u8=new Uint8Array(buf), dv=new DataView(buf);
+  // find End Of Central Directory
+  let eocd=-1;
+  for(let i=u8.length-22;i>=Math.max(0,u8.length-70000);i--){ if(dv.getUint32(i,true)===0x06054b50){eocd=i;break;} }
+  if(eocd<0) throw new Error('Not a valid .xlsx (zip) file');
+  const cdCount=dv.getUint16(eocd+10,true), cdOff=dv.getUint32(eocd+16,true);
+  const entries={}; let p=cdOff;
+  for(let i=0;i<cdCount;i++){
+    if(dv.getUint32(p,true)!==0x02014b50) break;
+    const method=dv.getUint16(p+10,true), csize=dv.getUint32(p+20,true), usize=dv.getUint32(p+24,true);
+    const nlen=dv.getUint16(p+28,true), xlen=dv.getUint16(p+30,true), clen=dv.getUint16(p+32,true);
+    const lho=dv.getUint32(p+42,true);
+    const name=new TextDecoder().decode(u8.subarray(p+46,p+46+nlen));
+    entries[name]={method,csize,usize,lho}; p+=46+nlen+xlen+clen;
+  }
+  async function get(name){
+    const e=entries[name]; if(!e) return null;
+    const nlen=dv.getUint16(e.lho+26,true), xlen=dv.getUint16(e.lho+28,true);
+    const start=e.lho+30+nlen+xlen; const data=u8.subarray(start,start+e.csize);
+    let out;
+    if(e.method===0) out=data;
+    else if(e.method===8){
+      const ds=new DecompressionStream('deflate-raw');
+      const stream=new Blob([data]).stream().pipeThrough(ds);
+      out=new Uint8Array(await new Response(stream).arrayBuffer());
+    } else throw new Error('Unsupported zip compression');
+    return new TextDecoder().decode(out);
+  }
+  // shared strings
+  const sst=[]; const ss=await get('xl/sharedStrings.xml');
+  if(ss){ const re=/<si>([\s\S]*?)<\/si>/g; let m; while((m=re.exec(ss))){ sst.push(decodeXml((m[1].match(/<t[^>]*>([\s\S]*?)<\/t>/g)||[]).map(t=>t.replace(/<t[^>]*>|<\/t>/g,'')).join('')));} }
+  // first worksheet
+  let sheetPath='xl/worksheets/sheet1.xml';
+  const wb=await get('xl/workbook.xml'), rels=await get('xl/_rels/workbook.xml.rels');
+  if(wb&&rels){
+    const rid=(wb.match(/<sheet [^>]*r:id="([^"]+)"/)||[])[1];
+    if(rid){ const t=(rels.match(new RegExp('<Relationship [^>]*Id="'+rid+'"[^>]*Target="([^"]+)"'))||rels.match(new RegExp('<Relationship [^>]*Target="([^"]+)"[^>]*Id="'+rid+'"'))||[])[1];
+      if(t) sheetPath=t.startsWith('/')?t.slice(1):('xl/'+t.replace(/^\.?\//,'')); }
+  }
+  const xml=await get(sheetPath); if(!xml) throw new Error('Worksheet not found in file');
+  const rows=[];
+  const rowRe=/<row[^>]*>([\s\S]*?)<\/row>/g; let rm;
+  while((rm=rowRe.exec(xml))){
+    const cells=[]; const cRe=/<c ([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g; let cm;
+    while((cm=cRe.exec(rm[1]))){
+      const attrs=cm[1], inner=cm[2]||'';
+      const ref=(attrs.match(/r="([A-Z]+)\d+"/)||[])[1]||''; const t=(attrs.match(/\bt="([^"]+)"/)||[])[1];
+      let v=(inner.match(/<v>([\s\S]*?)<\/v>/)||[])[1];
+      let val=null;
+      if(t==='s') val=sst[parseInt(v,10)];
+      else if(t==='inlineStr') val=decodeXml((inner.match(/<t[^>]*>([\s\S]*?)<\/t>/g)||[]).map(x=>x.replace(/<t[^>]*>|<\/t>/g,'')).join(''));
+      else if(t==='str'||t==='e') val=v!=null?decodeXml(v):null;
+      else if(t==='b') val=v==='1';
+      else val=(v==null||v==='')?null:Number(v);
+      cells[colIdx(ref)]=val;
+    }
+    rows.push(cells);
+  }
+  return rows;
+}
+function colIdx(l){let n=0;for(const ch of l)n=n*26+(ch.charCodeAt(0)-64);return n-1}
+function decodeXml(s){return s.replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&apos;/g,"'").replace(/&amp;/g,'&')}
+
+function readCsv(text){
+  const rows=[];let row=[],f='',q=false;
+  for(let i=0;i<text.length;i++){const c=text[i];
+    if(q){ if(c==='"'){ if(text[i+1]==='"'){f+='"';i++;} else q=false; } else f+=c; }
+    else if(c==='"') q=true;
+    else if(c===','){row.push(f);f='';}
+    else if(c==='\n'||c==='\r'){ if(c==='\r'&&text[i+1]==='\n')i++; row.push(f);rows.push(row);row=[];f=''; }
+    else f+=c;
+  }
+  if(f!==''||row.length){row.push(f);rows.push(row);}
+  return rows.map(r=>r.map(v=>{const n=Number(String(v).replace(/[$,]/g,''));return v!==''&&!isNaN(n)&&/^[\s$,()\-\d.]+$/.test(v)?n:v;}));
+}
+
+/* ============================================================
+   Column mapping
+   ============================================================ */
+const COLS={
+  name:['asset name','security name','description','security'],
+  symbol:['symbol','ticker','cusip'],
+  units:['units','quantity','shares','qty'],
+  cost:['cost basis','total cost','cost'],
+  mv:['market value','value','current value'],
+  st:['short-term gain/loss','short term gain/loss','st gain/loss','short-term unrealized','st g/l'],
+  lt:['long-term gain/loss','long term gain/loss','lt gain/loss','long-term unrealized','lt g/l'],
+  total:['total gain loss','total gain/loss','gain/loss','unrealized gain/loss','total g/l'],
+  taxStatus:['tax status','taxable','tax type'],
+  cls:['class','asset class'],
+  segment:['segment','sub class','sub-class'],
+  custodian:['custodian'],
+  household:['portfolio name','household','portfolio','client'],
+  account:['account name'],
+  acctNum:['account number','account #','account no','account']
+};
+function norm(s){return String(s??'').toLowerCase().replace(/\s+/g,' ').trim()}
+function mapColumns(header){
+  const h=header.map(norm), map={};
+  for(const [k,names] of Object.entries(COLS)){
+    let idx=-1;
+    for(const n of names){ idx=h.findIndex((x,i)=>x===n && !Object.values(map).includes(i)); if(idx>=0)break; }
+    if(idx>=0) map[k]=idx;
+  }
+  return map;
+}
+
+/* ============================================================
+   State
+   ============================================================ */
+const DEFAULT_EQUIV=`VTI, ITOT, SCHB
+DFAT, AVDV, DXUV
+DFIC, DFAI, AVDE
+FRDM, AVXC, IEMG
+DEMSX, AVEE, EEMS
+DFGR, REET, AVRE
+ARCIX, SDCI, HGER
+GLDM, OUNZ, IAU
+QDSIX
+VTG, GOVT, IEF
+EDV, VGLT, TLT
+STIP, VTIP, TDTT
+DFIP, TIP, SCHP
+LTPZ, DRXIX, TIP
+USFR, TFLO, SGOV`;
+
+let positions=[], fileName='', marks={}, families=[], sortKey='total', sortDir=1;
+const $=s=>document.querySelector(s);
+const store={
+  get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v);}catch(e){return d;}},
+  set(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}},
+  del(k){try{localStorage.removeItem(k);}catch(e){}}
+};
+const fmt$=n=>(n<0?'-':'')+'$'+Math.abs(n).toLocaleString('en-US',{maximumFractionDigits:0});
+const fmt$2=n=>(n<0?'-':'')+'$'+Math.abs(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+const fmtU=n=>Number(n).toLocaleString('en-US',{maximumFractionDigits:3});
+const fmtP=n=>(n*100).toFixed(1)+'%';
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+function parseFamilies(text){
+  return text.split(/\n/).map(l=>l.split(',').map(s=>s.trim().toUpperCase()).filter(s=>s&&s!=='NONE')).filter(a=>a.length);
+}
+function familyOf(sym){sym=String(sym).toUpperCase();return families.find(f=>f.includes(sym))||null}
+function suggestReplacement(sym){
+  const f=familyOf(sym); if(!f||f.length<2) return '';
+  const i=f.indexOf(String(sym).toUpperCase());
+  return f[(i+1)%f.length];
+}
+
+/* ============================================================
+   Loading
+   ============================================================ */
+function loadEquivUI(){ $('#equiv').value=store.get('tlh_equiv',DEFAULT_EQUIV); families=parseFamilies($('#equiv').value); }
+$('#saveEquiv').onclick=()=>{store.set('tlh_equiv',$('#equiv').value);families=parseFamilies($('#equiv').value);toast('Equivalents saved');renderAll();};
+$('#resetEquiv').onclick=()=>{$('#equiv').value=DEFAULT_EQUIV;store.set('tlh_equiv',DEFAULT_EQUIV);families=parseFamilies(DEFAULT_EQUIV);toast('Default list restored');renderAll();};
+$('#clearWork').onclick=()=>{ if(!fileName) return; if(confirm('Clear all marks and done checkmarks saved for '+fileName+'?')){marks={};saveMarks();renderAll();toast('Cleared');} };
+
+const drop=$('#drop'), fileIn=$('#file');
+drop.onclick=()=>fileIn.click();
+drop.ondragover=e=>{e.preventDefault();drop.classList.add('over')};
+drop.ondragleave=()=>drop.classList.remove('over');
+drop.ondrop=e=>{e.preventDefault();drop.classList.remove('over');if(e.dataTransfer.files[0])loadFile(e.dataTransfer.files[0]);};
+fileIn.onchange=()=>{if(fileIn.files[0])loadFile(fileIn.files[0]);fileIn.value='';};
+
+async function loadFile(file){
+  try{
+    let rows;
+    if(/\.csv$/i.test(file.name)) rows=readCsv(await file.text());
+    else rows=await readXlsx(await file.arrayBuffer());
+    // header = first row with >=6 non-empty cells
+    let hi=rows.findIndex(r=>r&&r.filter(x=>x!==null&&x!=='').length>=6);
+    if(hi<0) throw new Error('Could not find a header row');
+    const map=mapColumns(rows[hi]);
+    const need=['symbol','units','cost','mv','total','custodian','account'];
+    const missing=need.filter(k=>map[k]==null);
+    if(missing.length) throw new Error('Missing columns: '+missing.join(', ')+'. Found: '+rows[hi].filter(Boolean).join(' | '));
+    positions=[];
+    for(const r of rows.slice(hi+1)){
+      if(!r||r[map.symbol]==null||r[map.symbol]==='') continue;
+      const g=k=>map[k]==null?null:r[map[k]];
+      const num=k=>{const v=g(k);return v==null||v===''?0:Number(v)||0;};
+      const st=num('st'), lt=num('lt');
+      const total=map.total!=null?num('total'):(st+lt);
+      positions.push({
+        id:String(g('acctNum')??g('account'))+'|'+String(g('symbol')),
+        name:String(g('name')??''), symbol:String(g('symbol')).trim(), units:num('units'),
+        cost:num('cost'), mv:num('mv'), st, lt, total,
+        taxStatus:String(g('taxStatus')??''), cls:String(g('cls')??''), segment:String(g('segment')??''),
+        custodian:String(g('custodian')??'Unknown'), household:String(g('household')??''),
+        account:String(g('account')??''), acctNum:String(g('acctNum')??'')
+      });
+    }
+    fileName=file.name;
+    marks=store.get('tlh_marks_'+fileName,{});
+    // drop marks for positions no longer present
+    for(const id of Object.keys(marks)) if(!positions.find(p=>p.id===id)) delete marks[id];
+    $('#fileMeta').textContent=fileName+' · '+positions.length+' positions · '+new Date().toLocaleDateString();
+    populateFilters(); renderAll(); showTab('review');
+    toast('Loaded '+positions.length+' positions');
+  }catch(err){ alert('Could not load file.\n\n'+err.message); console.error(err); }
+}
+
+function populateFilters(){
+  const fill=(sel,vals)=>{const el=$(sel);const cur=el.value;el.innerHTML='<option value="">All</option>'+[...new Set(vals)].filter(Boolean).sort().map(v=>`<option${v===cur?' selected':''}>${esc(v)}</option>`).join('');};
+  fill('#fHouse',positions.map(p=>p.household));
+  fill('#fCust',positions.map(p=>p.custodian));
+  fill('#fClass',positions.map(p=>p.cls));
+}
+
+/* ============================================================
+   Derived values for a mark
+   ============================================================ */
+function tradeFor(p){
+  const m=marks[p.id]; if(!m) return null;
+  const units=Math.min(Math.max(Number(m.units)||p.units,0),p.units);
+  const frac=p.units?units/p.units:1;
+  return {p, m, units, frac, proceeds:p.mv*frac, cost:p.cost*frac, st:p.st*frac, lt:p.lt*frac, total:p.total*frac,
+    buy:(m.buy??suggestReplacement(p.symbol)).toUpperCase(), done:!!m.done, note:m.note||''};
+}
+function allTrades(){return positions.map(tradeFor).filter(Boolean)}
+
+function washFlags(t){
+  const flags=[]; const sym=t.p.symbol.toUpperCase();
+  // same symbol held elsewhere in household
+  const others=positions.filter(x=>x.id!==t.p.id && x.household===t.p.household && x.symbol.toUpperCase()===sym);
+  for(const o of others){
+    const om=marks[o.id];
+    if(!om) flags.push({bad:false,text:'Also held in '+o.account+' (not marked). Confirm no purchases or reinvested dividends there within 30 days.'});
+  }
+  if(t.buy){
+    if(t.buy===sym) flags.push({bad:true,text:'Buy is the same security being sold.'});
+    // buying something that is being sold at a loss elsewhere in household
+    const conflict=allTrades().filter(x=>x.p.household===t.p.household && x.p.symbol.toUpperCase()===t.buy && x.total<0);
+    if(conflict.length) flags.push({bad:true,text:t.buy+' is marked for sale at a loss in '+conflict.map(c=>c.p.account).join(', ')+'. Buying it here would wash that loss.'});
+  }
+  if(t.total>=0) flags.push({bad:false,text:'Not a loss at position level.'});
+  return flags;
+}
+// flag for review table: same symbol in another account of household
+function heldElsewhere(p){return positions.filter(x=>x.id!==p.id&&x.household===p.household&&x.symbol.toUpperCase()===p.symbol.toUpperCase())}
+
+/* ============================================================
+   Rendering
+   ============================================================ */
+function saveMarks(){ if(fileName) store.set('tlh_marks_'+fileName,marks); }
+function toast(msg){const t=$('#toast');t.textContent=msg;t.classList.add('show');clearTimeout(t._h);t._h=setTimeout(()=>t.classList.remove('show'),1800);}
+function showTab(name){document.querySelectorAll('nav.tabs button').forEach(b=>b.classList.toggle('on',b.dataset.tab===name));document.querySelectorAll('section.view').forEach(s=>s.classList.toggle('on',s.id==='view-'+name));}
+document.querySelectorAll('nav.tabs button').forEach(b=>b.onclick=()=>showTab(b.dataset.tab));
+
+function filtered(){
+  const q=norm($('#q').value), house=$('#fHouse').value, cust=$('#fCust').value, cls=$('#fClass').value;
+  const minLoss=Number($('#fMinLoss').value)||0, minPct=(Number($('#fMinPct').value)||0)/100;
+  const gains=$('#fGains').checked, taxable=$('#fTaxable').checked, priv=$('#fPriv').checked, markedOnly=$('#fMarkedOnly').checked;
+  return positions.filter(p=>{
+    if(markedOnly) return !!marks[p.id];
+    if(marks[p.id]) return true; // always show marked rows
+    if(taxable && p.taxStatus && norm(p.taxStatus)!=='taxable') return false;
+    if(priv && /private|alternative|unclassified|to be classified/i.test(p.cls+' '+p.segment)) return false;
+    if(house && p.household!==house) return false;
+    if(cust && p.custodian!==cust) return false;
+    if(cls && p.cls!==cls) return false;
+    if(!gains){ if(p.total>=0) return false; if(-p.total<minLoss) return false; if(p.cost&&(-p.total/p.cost)<minPct) return false; }
+    if(q && !norm(p.symbol+' '+p.name+' '+p.account+' '+p.household+' '+p.acctNum).includes(q)) return false;
+    return true;
+  });
+}
+
+function renderLedger(el, shown){
+  const availST=shown.filter(p=>p.total<0).reduce((a,p)=>a+Math.min(p.st,0),0);
+  const availLT=shown.filter(p=>p.total<0).reduce((a,p)=>a+Math.min(p.lt,0),0);
+  const tr=allTrades();
+  const mST=tr.reduce((a,t)=>a+t.st,0), mLT=tr.reduce((a,t)=>a+t.lt,0);
+  const done=tr.filter(t=>t.done);
+  el.innerHTML=`
+    <div><div class="lab">Positions shown</div><div class="val">${shown.length}</div></div>
+    <div><div class="lab">Short-term loss available (shown)</div><div class="val neg">${fmt$(availST)}</div></div>
+    <div><div class="lab">Long-term loss available (shown)</div><div class="val neg">${fmt$(availLT)}</div></div>
+    <div class="marked"><div class="lab">Marked: ${tr.length} trades</div><div class="val">${fmt$(mST+mLT)}</div><div class="small mut">ST ${fmt$(mST)} · LT ${fmt$(mLT)}</div></div>
+    <div><div class="lab">Completed</div><div class="val">${done.length} / ${tr.length}</div><div class="small mut">${fmt$(done.reduce((a,t)=>a+t.total,0))} realized</div></div>`;
+}
+
+const REVIEW_COLS=[
+  ['mark','',''],['household','Household',''],['account','Account',''],['custodian','Custodian',''],['symbol','Symbol',''],['name','Name',''],
+  ['units','Units','num'],['mv','Market value','num'],['cost','Cost basis','num'],['st','ST G/L','num'],['lt','LT G/L','num'],['total','Total G/L','num'],['pct','Loss %','num'],['flags','Flags','']
+];
+function renderReview(){
+  const shown=filtered();
+  renderLedger($('#ledger'),shown);
+  $('#pillReview').textContent=shown.length; $('#pillTrades').textContent=allTrades().length;
+  if(!positions.length){$('#reviewTable').innerHTML='<div class="empty">Load an export to begin.</div>';return;}
+  const key=sortKey;
+  shown.sort((a,b)=>{
+    let va=key==='pct'?(a.cost?a.total/a.cost:0):a[key], vb=key==='pct'?(b.cost?b.total/b.cost:0):b[key];
+    if(key==='mark'){va=marks[a.id]?1:0;vb=marks[b.id]?1:0;}
+    if(typeof va==='string') return sortDir*va.localeCompare(vb);
+    return sortDir*((va??0)-(vb??0));
+  });
+  let h='<table><thead><tr>'+REVIEW_COLS.map(([k,l,c])=>`<th class="${c}" data-k="${k}">${l}${sortKey===k?`<span class="arr">${sortDir>0?'▲':'▼'}</span>`:''}</th>`).join('')+'</tr></thead><tbody>';
+  if(!shown.length) h+='<tr><td colspan="14" class="empty">Nothing matches the current filters.</td></tr>';
+  for(const p of shown){
+    const m=marks[p.id], t=tradeFor(p);
+    const he=heldElsewhere(p);
+    let flags='';
+    if(he.length) flags+=`<span class="flag">Held in ${he.length} other acct${he.length>1?'s':''}</span>`;
+    if(familyOf(p.symbol)) flags+=`<span class="flag" style="background:var(--fog);color:var(--navy);border-color:var(--line)">Swap: ${esc(suggestReplacement(p.symbol)||'none')}</span>`;
+    if(t) for(const f of washFlags(t)) if(f.bad) flags+=`<span class="flag bad">${esc(f.text)}</span>`;
+    h+=`<tr class="${m?'marked':''}${t&&t.done?' done':''}">
+      <td><input type="checkbox" data-mark="${esc(p.id)}" ${m?'checked':''}></td>
+      <td>${esc(p.household)}</td><td class="small">${esc(p.account)}<br><span class="mut">${esc(p.acctNum)}</span></td><td>${esc(p.custodian)}</td>
+      <td><span class="sym">${esc(p.symbol)}</span></td><td class="name">${esc(p.name)}<br><span class="mut small">${esc(p.cls)}${p.segment?' · '+esc(p.segment):''}</span></td>
+      <td class="num">${fmtU(p.units)}</td><td class="num">${fmt$(p.mv)}</td><td class="num">${fmt$(p.cost)}</td>
+      <td class="num ${p.st<0?'neg':p.st>0?'pos':''}">${fmt$(p.st)}</td><td class="num ${p.lt<0?'neg':p.lt>0?'pos':''}">${fmt$(p.lt)}</td>
+      <td class="num ${p.total<0?'neg':'pos'}"><strong>${fmt$(p.total)}</strong></td><td class="num">${p.cost?fmtP(p.total/p.cost):''}</td>
+      <td>${flags}</td></tr>`;
+  }
+  h+='</tbody></table>';
+  $('#reviewTable').innerHTML=h;
+  document.querySelectorAll('#reviewTable th').forEach(th=>th.onclick=()=>{const k=th.dataset.k;if(sortKey===k)sortDir*=-1;else{sortKey=k;sortDir=(k==='total'||k==='st'||k==='lt'||k==='pct')?1:1;}renderReview();});
+  document.querySelectorAll('#reviewTable input[data-mark]').forEach(cb=>cb.onchange=()=>{
+    const id=cb.dataset.mark;
+    if(cb.checked) marks[id]={units:null,buy:null,note:'',done:false}; else delete marks[id];
+    saveMarks(); renderAll();
+  });
+}
+
+function renderTrades(){
+  const trades=allTrades();
+  renderLedger($('#ledger2'),filtered());
+  const hideDone=$('#hideDone').checked;
+  const el=$('#tradeList');
+  if(!trades.length){el.innerHTML='<div class="empty">No trades marked yet. Mark positions on the Review tab.</div>';return;}
+  const custs=[...new Set(trades.map(t=>t.p.custodian))].sort();
+  let h='';
+  for(const c of custs){
+    const ct=trades.filter(t=>t.p.custodian===c);
+    const cST=ct.reduce((a,t)=>a+t.st,0), cLT=ct.reduce((a,t)=>a+t.lt,0), cDone=ct.filter(t=>t.done).length;
+    h+=`<div class="cust"><div class="head"><h2>${esc(c)}</h2><span class="mut small">${ct.length} trades · ${cDone} done · ST ${fmt$(cST)} · LT ${fmt$(cLT)}</span>
+      <button class="btn sec sm" data-copy="${esc(c)}">Copy</button><button class="btn sec sm" data-csv="${esc(c)}">CSV</button></div>`;
+    const accts=[...new Set(ct.map(t=>t.p.account+'|'+t.p.acctNum))].sort();
+    for(const a of accts){
+      const [an,anum]=a.split('|'); const at=ct.filter(t=>t.p.account===an&&t.p.acctNum===anum);
+      h+=`<div class="acct">${esc(at[0].p.household)} <span class="mut">·</span> ${esc(an)} <span class="mut small">${esc(anum)}</span></div>
+      <table><thead><tr><th>Done</th><th>Action</th><th>Symbol</th><th>Description</th><th class="num">Units</th><th class="num">Est. proceeds</th><th class="num">ST loss</th><th class="num">LT loss</th><th>Buy</th><th class="num">Buy amount</th><th>Flags</th><th>Note</th><th></th></tr></thead><tbody>`;
+      for(const t of at){
+        if(hideDone&&t.done) continue;
+        const f=familyOf(t.p.symbol)||[];
+        const opts=f.filter(s=>s!==t.p.symbol.toUpperCase());
+        const buySel=`<select data-buysel="${esc(t.p.id)}"><option value="">(none)</option>${opts.map(o=>`<option ${t.buy===o?'selected':''}>${o}</option>`).join('')}<option value="__other" ${t.buy&&!opts.includes(t.buy)?'selected':''}>Other…</option></select>`;
+        const buyTxt=`<input type="text" data-buytxt="${esc(t.p.id)}" value="${esc(t.buy)}" placeholder="symbol" style="width:80px;${(!t.buy||opts.includes(t.buy))&&opts.length?'display:none':''}">`;
+        const flags=washFlags(t).map(x=>`<span class="flag ${x.bad?'bad':''}">${esc(x.text)}</span>`).join('');
+        h+=`<tr class="${t.done?'done':''}">
+          <td><input type="checkbox" data-done="${esc(t.p.id)}" ${t.done?'checked':''}></td>
+          <td class="neg" style="font-weight:600">SELL</td><td><span class="sym">${esc(t.p.symbol)}</span></td><td class="name">${esc(t.p.name)}</td>
+          <td class="num"><input type="number" data-units="${esc(t.p.id)}" value="${+t.units.toFixed(4)}" max="${p2(t.p.units)}" step="any"> <span class="mut small">of ${fmtU(t.p.units)}</span></td>
+          <td class="num">${fmt$2(t.proceeds)}</td><td class="num ${sg(t.st)}">${fmt$2(t.st)}</td><td class="num ${sg(t.lt)}">${fmt$2(t.lt)}</td>
+          <td>${opts.length?buySel:''}${buyTxt}</td><td class="num">${t.buy?fmt$2(t.proceeds):''}</td>
+          <td style="white-space:normal;max-width:260px">${flags}</td>
+          <td><input type="text" data-note="${esc(t.p.id)}" value="${esc(t.note)}" placeholder="note" style="width:140px"></td>
+          <td><button class="btn ghost sm" data-unmark="${esc(t.p.id)}" title="Remove from list">✕</button></td></tr>`;
+      }
+      h+='</tbody></table>';
+    }
+    h+='</div>';
+  }
+  el.innerHTML=h;
+  el.querySelectorAll('[data-done]').forEach(cb=>cb.onchange=()=>{marks[cb.dataset.done].done=cb.checked;saveMarks();renderAll();});
+  el.querySelectorAll('[data-units]').forEach(inp=>inp.onchange=()=>{const id=inp.dataset.units,p=positions.find(x=>x.id===id);let v=Number(inp.value);if(!(v>0))v=p.units;marks[id].units=Math.min(v,p.units);saveMarks();renderAll();});
+  el.querySelectorAll('[data-note]').forEach(inp=>inp.onchange=()=>{marks[inp.dataset.note].note=inp.value;saveMarks();});
+  el.querySelectorAll('[data-buysel]').forEach(sel=>sel.onchange=()=>{const id=sel.dataset.buysel;if(sel.value==='__other'){marks[id].buy=marks[id].buy&&!familyOf(positions.find(x=>x.id===id).symbol)?.includes(marks[id].buy)?marks[id].buy:' ';}else marks[id].buy=sel.value;saveMarks();renderAll();});
+  el.querySelectorAll('[data-buytxt]').forEach(inp=>inp.onchange=()=>{marks[inp.dataset.buytxt].buy=inp.value.trim().toUpperCase();saveMarks();renderAll();});
+  el.querySelectorAll('[data-unmark]').forEach(b=>b.onclick=()=>{delete marks[b.dataset.unmark];saveMarks();renderAll();});
+  el.querySelectorAll('[data-copy]').forEach(b=>b.onclick=()=>copyText(tradeText(trades.filter(t=>t.p.custodian===b.dataset.copy))));
+  el.querySelectorAll('[data-csv]').forEach(b=>b.onclick=()=>download(tradeCsv(trades.filter(t=>t.p.custodian===b.dataset.csv)),'Trades_'+safe(b.dataset.csv)+'_'+today()+'.csv'));
+}
+function sg(n){return n<0?'neg':n>0?'pos':''}
+function p2(n){return Math.round(n*10000)/10000}
+
+/* ============================================================
+   Text / CSV outputs
+   ============================================================ */
+function today(){return new Date().toISOString().slice(0,10)}
+function safe(s){return String(s).replace(/[^A-Za-z0-9_-]+/g,'_')}
+function tradeText(trades){
+  let out='';
+  const accts=[...new Set(trades.map(t=>t.p.custodian+' | '+t.p.household+' | '+t.p.account+' | '+t.p.acctNum))].sort();
+  for(const a of accts){
+    out+=a+'\n';
+    for(const t of trades.filter(t=>t.p.custodian+' | '+t.p.household+' | '+t.p.account+' | '+t.p.acctNum===a)){
+      out+=`  ${t.done?'[x]':'[ ]'} SELL ${fmtU(t.units)} ${t.p.symbol}  (${t.p.name})  ~${fmt$(t.proceeds)}  ST ${fmt$(t.st)} / LT ${fmt$(t.lt)}`;
+      if(t.buy) out+=`  ->  BUY ${t.buy} ~${fmt$(t.proceeds)}`;
+      if(t.note) out+=`  [${t.note}]`;
+      out+='\n';
+    }
+    out+='\n';
+  }
+  return out;
+}
+function csvRow(a){return a.map(v=>{v=v==null?'':String(v);return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;}).join(',')}
+function tradeCsv(trades){
+  const rows=[['Custodian','Household','Account','Account Number','Action','Symbol','Description','Units','Est Proceeds','Cost Basis','ST Loss','LT Loss','Total Loss','Buy Symbol','Buy Amount','Done','Note']];
+  for(const t of trades) rows.push([t.p.custodian,t.p.household,t.p.account,t.p.acctNum,'SELL',t.p.symbol,t.p.name,p2(t.units),t.proceeds.toFixed(2),t.cost.toFixed(2),t.st.toFixed(2),t.lt.toFixed(2),t.total.toFixed(2),t.buy,t.buy?t.proceeds.toFixed(2):'',t.done?'Y':'N',t.note]);
+  return rows.map(csvRow).join('\n');
+}
+function copyText(txt){navigator.clipboard.writeText(txt).then(()=>toast('Copied'),()=>{prompt('Copy:',txt);});}
+function download(text,name){const b=new Blob([text],{type:'text/csv'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000);}
+$('#copyAll').onclick=()=>copyText(tradeText(allTrades()));
+$('#csvAll').onclick=()=>download(tradeCsv(allTrades()),'Trades_All_'+today()+'.csv');
+
+/* ============================================================
+   Export / summary
+   ============================================================ */
+function exportTrades(){const s=$('#expScope').value;return allTrades().filter(t=>s==='all'||t.done);}
+function renderExport(){
+  const tr=exportTrades();
+  if(!$('#expDate').value) $('#expDate').value=new Date().toLocaleDateString('en-US');
+  if(!tr.length){$('#expPreview').innerHTML='<div class="empty">Nothing to summarize yet. '+($('#expScope').value==='done'?'Check trades off as done on the Trade list, or switch to all marked trades.':'Mark positions on the Review tab.')+'</div>';$('#print').innerHTML='';return;}
+  const houses=[...new Set(tr.map(t=>t.p.household))].sort();
+  let body='';
+  const gST=tr.reduce((a,t)=>a+t.st,0),gLT=tr.reduce((a,t)=>a+t.lt,0),gP=tr.reduce((a,t)=>a+t.proceeds,0);
+  for(const hh of houses){
+    const ht=tr.filter(t=>t.p.household===hh);
+    body+=`<h2>${esc(hh)}</h2><table><thead><tr><th>Account</th><th>Custodian</th><th>Sold</th><th>Description</th><th class="num">Units</th><th class="num">Proceeds</th><th class="num">Cost basis</th><th class="num">ST loss</th><th class="num">LT loss</th><th>Replaced with</th><th>Note</th></tr></thead><tbody>`;
+    for(const t of ht) body+=`<tr><td>${esc(t.p.account)}</td><td>${esc(t.p.custodian)}</td><td class="sym">${esc(t.p.symbol)}</td><td class="name">${esc(t.p.name)}</td><td class="num">${fmtU(t.units)}</td><td class="num">${fmt$2(t.proceeds)}</td><td class="num">${fmt$2(t.cost)}</td><td class="num ${sg(t.st)}">${fmt$2(t.st)}</td><td class="num ${sg(t.lt)}">${fmt$2(t.lt)}</td><td>${esc(t.buy||'—')}</td><td class="small">${esc(t.note)}</td></tr>`;
+    body+=`<tr class="sub tot"><td colspan="5">Household total · ${ht.length} sale${ht.length>1?'s':''}</td><td class="num">${fmt$2(ht.reduce((a,t)=>a+t.proceeds,0))}</td><td class="num">${fmt$2(ht.reduce((a,t)=>a+t.cost,0))}</td><td class="num neg">${fmt$2(ht.reduce((a,t)=>a+t.st,0))}</td><td class="num neg">${fmt$2(ht.reduce((a,t)=>a+t.lt,0))}</td><td colspan="2"></td></tr></tbody></table>`;
+  }
+  const head=`<div class="ledger" style="margin-bottom:18px"><div><div class="lab">Sales</div><div class="val">${tr.length}</div></div><div><div class="lab">Proceeds</div><div class="val">${fmt$(gP)}</div></div><div><div class="lab">Short-term loss realized</div><div class="val neg">${fmt$(gST)}</div></div><div><div class="lab">Long-term loss realized</div><div class="val neg">${fmt$(gLT)}</div></div><div><div class="lab">Total loss realized</div><div class="val neg">${fmt$(gST+gLT)}</div></div></div>`;
+  $('#expPreview').innerHTML=head+body;
+  $('#print').innerHTML=`<h1>Tax Loss Harvest Summary</h1><div class="sub">Trade date ${esc($('#expDate').value)} · Source ${esc(fileName)} · Prepared by ${esc($('#expBy').value)} · ${$('#expScope').value==='done'?'Completed trades':'All marked trades'}</div>`+head+body+`<p class="small mut">Figures are estimates from position-level export data as of the export date. Realized amounts will differ by execution price. Confirm lot selection and wash sale status against custodian records.</p>`;
+}
+function exportCsv(){
+  const tr=exportTrades();
+  const rows=[['Trade Date','Household','Account','Account Number','Custodian','Sold Symbol','Description','Units','Est Proceeds','Cost Basis','ST Loss','LT Loss','Total Loss','Replaced With','Buy Amount','Note']];
+  for(const t of tr) rows.push([$('#expDate').value,t.p.household,t.p.account,t.p.acctNum,t.p.custodian,t.p.symbol,t.p.name,p2(t.units),t.proceeds.toFixed(2),t.cost.toFixed(2),t.st.toFixed(2),t.lt.toFixed(2),t.total.toFixed(2),t.buy,t.buy?t.proceeds.toFixed(2):'',t.note]);
+  return rows.map(csvRow).join('\n');
+}
+$('#expCsv').onclick=()=>download(exportCsv(),'Harvest_Summary_'+today()+'.csv');
+$('#expPrint').onclick=()=>{renderExport();window.print();};
+['#expScope','#expDate','#expBy'].forEach(s=>$(s).addEventListener('input',renderExport));
+
+/* ============================================================
+   Wiring
+   ============================================================ */
+function renderAll(){renderReview();renderTrades();renderExport();}
+['#q','#fHouse','#fCust','#fClass','#fMinLoss','#fMinPct','#fGains','#fTaxable','#fPriv','#fMarkedOnly','#hideDone'].forEach(s=>{$(s).addEventListener('input',renderAll);$(s).addEventListener('change',renderAll);});
+loadEquivUI(); renderAll();
+</script>
+</body>
+</html>
